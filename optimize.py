@@ -3,6 +3,7 @@ import copy
 
 from pathlib import Path
 from pprint import pprint
+from contextlib import redirect_stdout
 
 from qiskit import QuantumCircuit, transpile
 from qiskit import qasm2
@@ -329,7 +330,6 @@ def optimize_with_lc_pivot_search(qc, num_trials=20, num_steps=10, seed=0, basis
 
   best_score = score_circuit(best_qc)
 
-  # LC/Pivotが実際に成功しているか確認するための統計
   stats = {
     "lc_success": 0,
     "pivot_success": 0,
@@ -345,7 +345,6 @@ def optimize_with_lc_pivot_search(qc, num_trials=20, num_steps=10, seed=0, basis
   for _ in range(num_trials):
     trial_graph = copy.deepcopy(base_graph)
 
-    # 各trialでLC/Pivotを複数回適用
     for _ in range(num_steps):
       success, kind = apply_random_lc_or_pivot(trial_graph, rng)
 
@@ -360,13 +359,11 @@ def optimize_with_lc_pivot_search(qc, num_trials=20, num_steps=10, seed=0, basis
       elif kind in stats:
         stats[kind] += 1
 
-    # LC/Pivot後に再度full_reduce
     try:
       zx.simplify.full_reduce(trial_graph)
     except Exception:
       pass
 
-    # ZXグラフからQiskit回路へ戻す
     try:
       trial_qc = graph_to_qiskit_circuit(
         trial_graph,
@@ -379,7 +376,6 @@ def optimize_with_lc_pivot_search(qc, num_trials=20, num_steps=10, seed=0, basis
 
     trial_score = score_circuit(trial_qc)
 
-    # より良いスコアならbestを更新
     if trial_score < best_score:
       best_score = trial_score
       best_qc = trial_qc
@@ -415,97 +411,103 @@ def get_recovery_metrics(baseline_metrics, pyzx_metrics, lc_pivot_metrics):
 # 各最適化手法を実行して比較
 def main():
 
-  # QASMBench
-  # circuits = load_qasmbench_circuits("QASMBench", max_files=1)
+  output_dir = Path("results")
+  output_dir.mkdir(exist_ok=True)
 
-  # Mybench
-  circuits = load_mybench_circuits("Mybench", max_files=None)
+  output_path = output_dir / "experiment_result.txt"
 
-  for name, qc in circuits:
+  with open(output_path, "w") as f:
+    with redirect_stdout(f):
 
-    circuit_type = get_circuit_type(name)
-    num_trials, num_steps = get_lc_pivot_params(name, qc)
+      # QASMBench
+      # circuits = load_qasmbench_circuits("QASMBench", max_files=1)
 
-    print("============================================================")
-    print(name)
-    print("circuit_type:")
-    pprint(circuit_type)
-    print("lc/pivot params:")
-    pprint({
-      "num_trials": num_trials,
-      "num_steps": num_steps
-    })
-    print()
+      # Mybench
+      circuits = load_mybench_circuits("Mybench", max_files=None)
 
-    # 元回路の指標
-    metrics = get_metrics(qc)
+      for name, qc in circuits:
 
-    # Qiskit標準最適化
-    baseline_qc = transpile(qc, optimization_level=3)
-    baseline_metrics = get_metrics(baseline_qc)
+        circuit_type = get_circuit_type(name)
+        num_trials, num_steps = get_lc_pivot_params(name, qc)
 
-    # PyZX full_reduce最適化
-    pyzx_qc = optimize(qc, basis_gates=NISQ_BASIS_GATES)
-    pyzx_metrics = get_metrics(pyzx_qc)
+        print("============================================================")
+        print(name)
+        print("circuit_type:")
+        pprint(circuit_type)
+        print("lc/pivot params:")
+        pprint({
+          "num_trials": num_trials,
+          "num_steps": num_steps
+        })
+        print()
 
-    # Qiskit最適化後にPyZXを適用
-    my_optimized_qc_1 = optimize(baseline_qc, basis_gates=NISQ_BASIS_GATES)
-    my_optimized_metrics_1 = get_metrics(my_optimized_qc_1)
+        metrics = get_metrics(qc)
 
-    # PyZX後にQiskitで再transpile
-    my_optimized_qc_2 = transpile(
-      my_optimized_qc_1,
-      basis_gates=NISQ_BASIS_GATES,
-      optimization_level=3
-    )
+        baseline_qc = transpile(qc, optimization_level=3)
+        baseline_metrics = get_metrics(baseline_qc)
 
-    my_optimized_metrics_2 = get_metrics(my_optimized_qc_2)
+        pyzx_qc = optimize(qc, basis_gates=NISQ_BASIS_GATES)
+        pyzx_metrics = get_metrics(pyzx_qc)
 
-    # LC/Pivot探索付きPyZX最適化
-    my_optimized_qc_3 = optimize_with_lc_pivot_search(
-      baseline_qc,
-      num_trials=num_trials,
-      num_steps=num_steps,
-      seed=0,
-      basis_gates=NISQ_BASIS_GATES,
-      verbose=True
-    )
+        my_optimized_qc_1 = optimize(
+          baseline_qc,
+          basis_gates=NISQ_BASIS_GATES
+        )
 
-    my_optimized_metrics_3 = get_metrics(my_optimized_qc_3)
+        my_optimized_metrics_1 = get_metrics(my_optimized_qc_1)
 
-    recovery_metrics = get_recovery_metrics(
-      baseline_metrics,
-      my_optimized_metrics_1,
-      my_optimized_metrics_3
-    )
+        my_optimized_qc_2 = transpile(
+          my_optimized_qc_1,
+          basis_gates=NISQ_BASIS_GATES,
+          optimization_level=3
+        )
 
-    print("original:")
-    pprint(metrics)
-    print()
+        my_optimized_metrics_2 = get_metrics(my_optimized_qc_2)
 
-    print("qiskit baseline:")
-    pprint(baseline_metrics)
-    print()
+        my_optimized_qc_3 = optimize_with_lc_pivot_search(
+          baseline_qc,
+          num_trials=num_trials,
+          num_steps=num_steps,
+          seed=0,
+          basis_gates=NISQ_BASIS_GATES,
+          verbose=True
+        )
 
-    print("pyzx:")
-    pprint(pyzx_metrics)
-    print()
+        my_optimized_metrics_3 = get_metrics(my_optimized_qc_3)
 
-    print("qiskit + pyzx:")
-    pprint(my_optimized_metrics_1)
-    print()
+        recovery_metrics = get_recovery_metrics(
+          baseline_metrics,
+          my_optimized_metrics_1,
+          my_optimized_metrics_3
+        )
 
-    print("qiskit + pyzx + qiskit:")
-    pprint(my_optimized_metrics_2)
-    print()
+        print("original:")
+        pprint(metrics)
+        print()
 
-    print("qiskit + pyzx + lc/pivot:")
-    pprint(my_optimized_metrics_3)
-    print()
+        print("qiskit baseline:")
+        pprint(baseline_metrics)
+        print()
 
-    print("recovery metrics:")
-    pprint(recovery_metrics)
-    print()
+        print("pyzx:")
+        pprint(pyzx_metrics)
+        print()
+
+        print("qiskit + pyzx:")
+        pprint(my_optimized_metrics_1)
+        print()
+
+        print("qiskit + pyzx + qiskit:")
+        pprint(my_optimized_metrics_2)
+        print()
+
+        print("qiskit + pyzx + lc/pivot:")
+        pprint(my_optimized_metrics_3)
+        print()
+
+        print("recovery metrics:")
+        pprint(recovery_metrics)
+        print()
 
 
 if __name__ == "__main__":
