@@ -26,11 +26,11 @@ def load_qasmbench_circuits(qasm_dir, max_files):
   circuits = []
 
   paths = [
-    *qasm_dir.rglob("adder_n28_transpiled.qasm"),
-    *qasm_dir.rglob("wstate_n3_transpiled.qasm"),
-    *qasm_dir.rglob("qft_n4_transpiled.qasm"),
-    *qasm_dir.rglob("qaoa_n6_transpiled.qasm"),
-    *qasm_dir.rglob("adder_n10_transpiled.qasm"),
+    # *qasm_dir.rglob("adder_n28_transpiled.qasm"),
+    # *qasm_dir.rglob("wstate_n3_transpiled.qasm"),
+    # *qasm_dir.rglob("qft_n4_transpiled.qasm"),
+    # *qasm_dir.rglob("qaoa_n6_transpiled.qasm"),
+    # *qasm_dir.rglob("adder_n10_transpiled.qasm"),
     *qasm_dir.rglob("multiplier_n45_transpiled.qasm")
   ]
 
@@ -355,10 +355,10 @@ def optimize_with_lc_pivot_search(qc, num_trials=20, num_steps=10, seed=0, basis
 def main():
 
   # QASMBench
-  # circuits = load_qasmbench_circuits("QASMBench", max_files=1)
+  circuits = load_qasmbench_circuits("QASMBench", max_files=1)
 
   # Mybench
-  circuits = load_mybench_circuits("Mybench", max_files=1)
+  # circuits = load_mybench_circuits("Mybench", max_files=1)
 
   for name, qc in circuits:
 
