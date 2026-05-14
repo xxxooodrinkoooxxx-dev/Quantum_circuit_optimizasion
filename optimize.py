@@ -13,9 +13,6 @@ import pyzx.local_search.congruences as cong
 # NISQ評価用の基底ゲート
 NISQ_BASIS_GATES = ["rz", "sx", "x", "cx"]
 
-# FTQC評価用の基底ゲート
-FTQC_BASIS_GATES = ["h", "s", "sdg", "t", "tdg", "rz", "cx", "cz"]
-
 
 # QASMファイルをQiskit回路として読み込む
 def load_qasm_circuit(qasm_path):
@@ -401,10 +398,6 @@ def main():
 
     my_optimized_metrics_3 = get_metrics(my_optimized_qc_3)
 
-    # FTQC basisでPyZX最適化を評価
-    ftqc_pyzx_qc = optimize(qc, basis_gates=FTQC_BASIS_GATES)
-    ftqc_pyzx_metrics = get_metrics(ftqc_pyzx_qc)
-
     print(name)
 
     print("original:")
@@ -415,24 +408,20 @@ def main():
     pprint(baseline_metrics)
     print()
 
-    print("pyzx nisq basis:")
+    print("pyzx:")
     pprint(pyzx_metrics)
     print()
 
-    print("custom optimized 1:")
+    print("qiskit + pyzx:")
     pprint(my_optimized_metrics_1)
     print()
 
-    print("custom optimized 2:")
+    print("qiskit + pyzx + qiskit:")
     pprint(my_optimized_metrics_2)
     print()
 
-    print("custom optimized 3 lc/pivot:")
+    print("qiskit + pyzx + lc/pivot:")
     pprint(my_optimized_metrics_3)
-    print()
-
-    print("pyzx ftqc basis:")
-    pprint(ftqc_pyzx_metrics)
     print()
 
 
