@@ -10,6 +10,7 @@ from qiskit import qasm2
 import pyzx as zx
 import pyzx.local_search.congruences as cong
 
+
 # NISQ評価用の基底ゲート
 NISQ_BASIS_GATES = ["rz", "sx", "x", "cx"]
 
@@ -58,6 +59,48 @@ def load_mybench_circuits(mybench_dir, max_files=None):
       break
 
   return circuits
+
+
+# 回路名から回路タイプを取得
+def get_circuit_type(name):
+  if name.startswith("t_tail"):
+    return "t_tail"
+
+  if name.startswith("t_distributed"):
+    return "t_distributed"
+
+  if name.startswith("cx_heavy"):
+    return "cx_heavy"
+
+  if name.startswith("t_focused"):
+    return "t_focused"
+
+  if "multiplier" in name:
+    return "qasmbench_multiplier"
+
+  return "unknown"
+
+
+# 回路タイプに応じてLC/Pivotの強さを決める
+def get_lc_pivot_params(name, qc):
+  circuit_type = get_circuit_type(name)
+
+  if qc.num_qubits >= 30:
+    return 10, 5
+
+  if circuit_type == "cx_heavy":
+    return 50, 15
+
+  if circuit_type == "t_distributed":
+    return 40, 15
+
+  if circuit_type == "t_tail":
+    return 30, 10
+
+  if circuit_type == "t_focused":
+    return 20, 10
+
+  return 20, 10
 
 
 # 回路の指標を取得
@@ -134,6 +177,7 @@ def get_two_qubit_count(qc):
       count += 1
 
   return count
+
 
 # measurement qubitとclassical bitの対応を取得
 def get_measure_map(qc):
@@ -351,16 +395,47 @@ def optimize_with_lc_pivot_search(qc, num_trials=20, num_steps=10, seed=0, basis
   return best_qc
 
 
+# PyZXによるCX増加とLC/Pivotの回収率を計算
+def get_recovery_metrics(baseline_metrics, pyzx_metrics, lc_pivot_metrics):
+  pyzx_overhead = pyzx_metrics["cx_count"] - baseline_metrics["cx_count"]
+  recovered_overhead = pyzx_metrics["cx_count"] - lc_pivot_metrics["cx_count"]
+
+  if pyzx_overhead <= 0:
+    recovery_rate = 0.0
+  else:
+    recovery_rate = recovered_overhead / pyzx_overhead
+
+  return {
+    "pyzx_overhead": pyzx_overhead,
+    "recovered_overhead": recovered_overhead,
+    "recovery_rate": recovery_rate
+  }
+
+
 # 各最適化手法を実行して比較
 def main():
 
   # QASMBench
-  circuits = load_qasmbench_circuits("QASMBench", max_files=1)
+  # circuits = load_qasmbench_circuits("QASMBench", max_files=1)
 
   # Mybench
-  # circuits = load_mybench_circuits("Mybench", max_files=1)
+  circuits = load_mybench_circuits("Mybench", max_files=None)
 
   for name, qc in circuits:
+
+    circuit_type = get_circuit_type(name)
+    num_trials, num_steps = get_lc_pivot_params(name, qc)
+
+    print("============================================================")
+    print(name)
+    print("circuit_type:")
+    pprint(circuit_type)
+    print("lc/pivot params:")
+    pprint({
+      "num_trials": num_trials,
+      "num_steps": num_steps
+    })
+    print()
 
     # 元回路の指標
     metrics = get_metrics(qc)
@@ -389,8 +464,8 @@ def main():
     # LC/Pivot探索付きPyZX最適化
     my_optimized_qc_3 = optimize_with_lc_pivot_search(
       baseline_qc,
-      num_trials=20,
-      num_steps=10,
+      num_trials=num_trials,
+      num_steps=num_steps,
       seed=0,
       basis_gates=NISQ_BASIS_GATES,
       verbose=True
@@ -398,7 +473,11 @@ def main():
 
     my_optimized_metrics_3 = get_metrics(my_optimized_qc_3)
 
-    print(name)
+    recovery_metrics = get_recovery_metrics(
+      baseline_metrics,
+      my_optimized_metrics_1,
+      my_optimized_metrics_3
+    )
 
     print("original:")
     pprint(metrics)
@@ -422,6 +501,10 @@ def main():
 
     print("qiskit + pyzx + lc/pivot:")
     pprint(my_optimized_metrics_3)
+    print()
+
+    print("recovery metrics:")
+    pprint(recovery_metrics)
     print()
 
 
